@@ -76,21 +76,110 @@ clientLock = threading.Lock()
 
 # this fucntion will be used to process the message from the client
 def executeMessage(address, message):
-    pass
+    isValidMessage = True
+    returnMessage = ""
 
-# this function will be used to recieve the messages from the client
-def recieveMessages(connection, address):
-    pass
+    print(address, json.dumps(message, indent=4, sort_keys=True))
+
+    if message["Action"] == "Log":
+        currentTime = datetime.now()
+        clientIp = address[0]  # Extract the IP from the address tuple
+
+        with clientLock:  # Acquire lock to prevent race conditions
+            # Append the current log time and filter old entries
+            clientLogs[clientIp].append(currentTime)
+            clientLogs[clientIp] = [logTime for logTime in clientLogs[clientIp] 
+                                      if currentTime - logTime < timedelta(seconds=CONST.RATE_WINDOW)]
+            
+            # Check rate limit after updates
+            if len(clientLogs[clientIp]) > CONST.RATE_LIMIT:
+                returnMessage = "Rate limit exceeded. Try again later."
+                isValidMessage = False
+            else:
+                try:
+                    # opening the log file in append mode from path specified in the constant config.json file 
+                    with open("%s/%s.LOG" % (CONST.LOGGING_FOLDERS, datetime.today().strftime('%Y-%m-%d')), "a") as logFile:
+                        logFile.write(generateLogLine(message["Parameters"], address))
+                    returnMessage = str(len(message))
+                except Exception as e:
+                    returnMessage = f"Error writing log: {str(e)}"
+                    isValidMessage = False
+    else:
+        returnMessage = "Invalid Action"
+
+    return isValidMessage, returnMessage
+
 
 # this function will be used to generate the log line ()
-def generateLofLine(parameters, address):
-    pass
+def generateLogLine(parameters, address):
+    logFormat = parameters.get("Format", "text","CSV").lower()
+    if logFormat not in ["text", "json", "csv"]:
+        logFormat = "text"
+
+    if logFormat == "json":
+        logEntry = {
+            "timestamp": parameters["Timestamp"],
+            "clientIp": address[0],
+            "clientPort": address[1],
+            "level": parameters["Level"],
+            "message": parameters["Message"],
+            "fileName": parameters["FileName"],
+            "fileLine": parameters["FileLine"],
+            "tags": parameters["Tags"]
+        }
+        return json.dumps(logEntry) + "\n"
+    elif logFormat == "csv":
+        allTags = ", ".join(parameters["Tags"])
+        return "%s,%s,%d,%s,%s,%s,%d,%s\n" % (
+            parameters["Timestamp"],
+            address[0],
+            address[1],
+            parameters["Level"],
+            parameters["Message"],
+            parameters["FileName"],
+            parameters["FileLine"],
+            allTags
+        )
+    else:
+        allTags = ", ".join(parameters["Tags"])
+        return "%s %s:%d [%s] - %s (%s:%d)[%s]\n" % (
+            parameters["Timestamp"],
+            address[0],
+            address[1],
+            parameters["Level"],
+            parameters["Message"],
+            parameters["FileName"],
+            parameters["FileLine"],
+            allTags
+        )
 
 clientLogs = defaultdict(list)
 
+
 # this function will be used to recieve the messages from the client
 def recieveMessages(connection, address):
-    pass
+    print("Connection established with %s" % str(address))
+    while True:
+        try:
+            message = connection.recv(CONST.MAX_LOG_LENGTH)
+            if not message:
+                print("Connection broken with %s" % str(address))
+                break
+
+            isValidMessage, returnMessage = executeMessage(address, json.loads(message.decode("utf-8")))
+
+            if isValidMessage:
+                connection.send(generateResponse(0, returnMessage))
+            else:
+                connection.send(generateResponse(-1, returnMessage))
+
+        except json.JSONDecodeError:
+            connection.send(generateResponse(-1, "Invalid JSON"))
+        except socket.timeout:
+            continue
+        except Exception as e:
+            print("Error:", e)
+            break
 
 class SimpleSocket(socket.socket):
     def __init__(self, family=socket.AF_INET, type=socket.SOCK_STREAM, proto=0, fileno=None):
