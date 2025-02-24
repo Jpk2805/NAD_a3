@@ -1,3 +1,12 @@
+#  
+#  FILE          : server.py
+#  PROJECT       : Assignment #3 
+#  PROGRAMMER    : Ayushkumar Rakholiya & Jaykumar Patel 
+#  FIRST VERSION : 205-02-20 
+#  DESCRIPTION   : 
+#   this file handles incoming log messages from clients.
+#
+
 import os, threading ,sys, io, selectors
 import socket
 import json
