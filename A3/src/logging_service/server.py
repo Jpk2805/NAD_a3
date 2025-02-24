@@ -7,12 +7,14 @@
 #   this file handles incoming log messages from clients.
 #
 
-import os, threading ,sys, io, selectors
+import os
+import threading
+import io
 import socket
 import json
 from collections import defaultdict
-import datetime
 from datetime import datetime, timedelta
+import csv
 
 class Constants(object):
     LOGGING_SERVICE_IP = "127.0.0.1"
@@ -45,7 +47,7 @@ class Settings():
                 CONST.LOGGING_FOLDERS     = js["LOGGING_FOLDERS"]
                 CONST.RATE_LIMIT          = js.get("RATE_LIMIT", 10)
                 CONST.RATE_WINDOW         = js.get("RATE_WINDOW", 60)
-                CONST.RATE_CONNECTIONS   = js.get("RATE_CONNECTIONS", 5)
+                CONST.RATE_CONNECTIONS    = js.get("RATE_CONNECTIONS", 5)
         except Exception as e:
             print("Error: Invalid configuration file with message -> %s" % str(e))
             print("Restoring the defaults to config.json, invalid config file is moved to 'ERROR_config.json' for future use")
@@ -83,7 +85,7 @@ def generateResponse(code, response):
 clientLogs = defaultdict(list)
 clientLock = threading.Lock()
 
-# this fucntion will be used to process the message from the client
+# this function will be used to process the message from the client
 def executeMessage(address, message):
     isValidMessage = True
     returnMessage = ""
@@ -107,7 +109,8 @@ def executeMessage(address, message):
             else:
                 try:
                     # opening the log file in append mode from path specified in the constant config.json file 
-                    with open("%s/%s.LOG" % (CONST.LOGGING_FOLDERS, datetime.today().strftime('%Y-%m-%d')), "a") as logFile:
+                    logFilePath = os.path.join(CONST.LOGGING_FOLDERS, datetime.today().strftime('%Y-%m-%d') + ".LOG")
+                    with open(logFilePath, "a") as logFile:
                         logFile.write(generateLogLine(message["Parameters"], address))
                     returnMessage = str(len(message))
                 except Exception as e:
@@ -118,10 +121,9 @@ def executeMessage(address, message):
 
     return isValidMessage, returnMessage
 
-
-# this function will be used to generate the log line ()
+# this function will be used to generate the log line
 def generateLogLine(parameters, address):
-    logFormat = parameters.get("Format", "text","CSV").lower()
+    logFormat = parameters.get("Format", "text").lower()
     if logFormat not in ["text", "json", "csv"]:
         logFormat = "text"
 
@@ -138,8 +140,10 @@ def generateLogLine(parameters, address):
         }
         return json.dumps(logEntry) + "\n"
     elif logFormat == "csv":
-        allTags = ", ".join(parameters["Tags"])
-        return "%s,%s,%d,%s,%s,%s,%d,%s\n" % (
+        # Using csv module to ensure proper CSV formatting and escaping.
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow([
             parameters["Timestamp"],
             address[0],
             address[1],
@@ -147,8 +151,9 @@ def generateLogLine(parameters, address):
             parameters["Message"],
             parameters["FileName"],
             parameters["FileLine"],
-            allTags
-        )
+            ";".join(parameters["Tags"])
+        ])
+        return output.getvalue()
     else:
         allTags = ", ".join(parameters["Tags"])
         return "%s %s:%d [%s] - %s (%s:%d)[%s]\n" % (
@@ -164,8 +169,7 @@ def generateLogLine(parameters, address):
 
 clientLogs = defaultdict(list)
 
-
-# this function will be used to recieve the messages from the client
+# this function will be used to receive the messages from the client
 def recieveMessages(connection, address):
     print("Connection established with %s" % str(address))
     while True:
@@ -175,20 +179,32 @@ def recieveMessages(connection, address):
                 print("Connection broken with %s" % str(address))
                 break
 
-            isValidMessage, returnMessage = executeMessage(address, json.loads(message.decode("utf-8")))
-
+            decoded_message = message.decode("utf-8")
+            try:
+                # Try to parse the message as JSON.
+                parsed_message = json.loads(decoded_message)
+                # Process as a structured log message.
+                isValidMessage, returnMessage = executeMessage(address, parsed_message)
+            except json.JSONDecodeError:
+                # If the message isn’t valid JSON, assume it’s a preformatted log message.
+                logFilePath = os.path.join(CONST.LOGGING_FOLDERS,
+                                            datetime.today().strftime('%Y-%m-%d') + ".LOG")
+                with open(logFilePath, "a") as logFile:
+                    logFile.write(decoded_message + "\n")
+                isValidMessage = True
+                returnMessage = "Logged pre-formatted message"
+            
             if isValidMessage:
                 connection.send(generateResponse(0, returnMessage))
             else:
                 connection.send(generateResponse(-1, returnMessage))
 
-        except json.JSONDecodeError:
-            connection.send(generateResponse(-1, "Invalid JSON"))
         except socket.timeout:
             continue
         except Exception as e:
             print("Error:", e)
             break
+
 
 class SimpleSocket(socket.socket):
     def __init__(self, family=socket.AF_INET, type=socket.SOCK_STREAM, proto=0, fileno=None):
@@ -233,9 +249,6 @@ def create_server(address, backlog=5):
     s.listen(backlog)
     return s
 
-
-
-
 if __name__ == "__main__":
     if os.path.isfile("config.json"):
         Settings.sGet()
@@ -246,7 +259,7 @@ if __name__ == "__main__":
 
     loggingSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     loggingSocket.bind((CONST.LOGGING_SERVICE_IP, CONST.LOGGING_PORT))
-    loggingSocket.listen(CONST.RATE_CONNECTIONS)  # Become a server socket, maximum 5 connections
+    loggingSocket.listen(CONST.RATE_CONNECTIONS)  # Maximum connections as per settings
 
     # Create the base logging folder to store all the logs
     if not os.path.isdir(CONST.LOGGING_FOLDERS):
@@ -261,7 +274,7 @@ if __name__ == "__main__":
             # using threading to handle multiple clients.
             threading.Thread(target=recieveMessages, args=(conn, addr)).start()
         except socket.timeout:
-            #on socket timeout, restart the server
+            # on socket timeout, restart the server
             print("Socket timeout, restarting the server...")
             loggingSocket.close()
             loggingSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -271,4 +284,3 @@ if __name__ == "__main__":
         except Exception as e:
             print("Error: %s" % str(e))
             loggingSocket.close()
-
