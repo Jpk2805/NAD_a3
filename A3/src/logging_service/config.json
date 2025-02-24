@@ -1,0 +1,11 @@
+{
+    "LOGGING_FOLDERS": "logs",
+    "LOGGING_PORT": 8089,
+    "LOGGING_SERVICE_IP": "127.0.0.1",
+    "MAX_LOG_LENGTH": 1024,
+    "RATE_LIMIT": 10,
+    "RATE_WINDOW": 60,
+    "RATE_CONNECTIONS": 5,
+    "SOCKET_TIMEOUT": 5
+    
+}

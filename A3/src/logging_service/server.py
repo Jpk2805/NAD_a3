@@ -1,7 +1,9 @@
-import os, sys, io, selectors
+import os, threading ,sys, io, selectors
 import socket
 import json
-
+from collections import defaultdict
+import datetime
+from datetime import datetime, timedelta
 
 class Constants(object):
     LOGGING_SERVICE_IP = "127.0.0.1"
@@ -63,6 +65,33 @@ class Settings():
             js = json.load(configFile)
             print(json.dumps(js, indent=4, sort_keys=True))
 
+# this function is used to generate the response for the client
+def generateResponse(code, response):
+    x = ("{\"code\":\"%s\",\"message\":\"%s\"}" % (str(code), str(response)))
+    print(x)
+    return x.encode('utf-8')
+
+clientLogs = defaultdict(list)
+clientLock = threading.Lock()
+
+# this fucntion will be used to process the message from the client
+def executeMessage(address, message):
+    pass
+
+# this function will be used to recieve the messages from the client
+def recieveMessages(connection, address):
+    pass
+
+# this function will be used to generate the log line ()
+def generateLofLine(parameters, address):
+    pass
+
+clientLogs = defaultdict(list)
+
+# this function will be used to recieve the messages from the client
+def recieveMessages(connection, address):
+    pass
+
 class SimpleSocket(socket.socket):
     def __init__(self, family=socket.AF_INET, type=socket.SOCK_STREAM, proto=0, fileno=None):
         super().__init__(family, type, proto, fileno)
@@ -106,6 +135,9 @@ def create_server(address, backlog=5):
     s.listen(backlog)
     return s
 
+
+
+
 if __name__ == "__main__":
     if os.path.isfile("config.json"):
         Settings.sGet()
@@ -124,4 +156,21 @@ if __name__ == "__main__":
 
     print("Program initialized, listening for logging requests...")
 
-    loggingSocket.close()
+    while True:
+        try:
+            conn, addr = loggingSocket.accept()
+            print("Connection from %s" % str(addr))
+            # using threading to handle multiple clients.
+            threading.Thread(target=recieveMessages, args=(conn, addr)).start()
+        except socket.timeout:
+            #on socket timeout, restart the server
+            print("Socket timeout, restarting the server...")
+            loggingSocket.close()
+            loggingSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            loggingSocket.bind((CONST.LOGGING_SERVICE_IP, CONST.LOGGING_PORT))
+            loggingSocket.listen(CONST.RATE_CONNECTIONS)
+            print("Server restarted, listening for logging requests...")
+        except Exception as e:
+            print("Error: %s" % str(e))
+            loggingSocket.close()
+
