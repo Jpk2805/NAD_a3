@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Scanner;
+import java.util.stream.IntStream;
 
 
 public class client {
@@ -69,6 +70,18 @@ public class client {
     }
 
     private static void automatedTesting() {
+        int numLogs = getIntInput("Enter the number of log messages to send: ");
+        float delay = getFloatInput("Enter the delay between log messages in seconds: ");
+        String format = getFormatInput();
+
+        IntStream.range(0, numLogs).forEach(i -> {
+            sendlogMessage(createlogMessage(
+                "INFO",
+                "Automated log message " + (i + 1),
+                format
+            ));
+            sleep(delay);
+        });
     }
 
     private static String toJson(Object obj) {
@@ -169,6 +182,34 @@ public class client {
     private static boolean confirm(String prompt) {
             System.out.print(prompt + " (yes/no): ");
             return scanner.nextLine().trim().equalsIgnoreCase("yes");
+    }
+
+    private static int getIntInput(String prompt) {
+        while (true) {
+            try {
+                return Integer.parseInt(getInput(prompt));
+            } catch (NumberFormatException e) {
+                System.out.println("Invalid number! Please try again.");
+            }
+        }
+    }
+
+    private static float getFloatInput(String prompt) {
+        while (true) {
+            try {
+                return Float.parseFloat(getInput(prompt));
+            } catch (NumberFormatException e) {
+                System.out.println("Invalid number! Please try again.");
+            }
+        }
+    }
+
+    private static void sleep(float seconds) {
+        try {
+            Thread.sleep((long)(seconds * 1000));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
     
 }
