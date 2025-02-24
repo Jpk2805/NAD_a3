@@ -1,7 +1,23 @@
+import java.util.List;
 import java.util.Scanner;
 
 public class client {
     private static final Scanner scanner = new Scanner(System.in);
+
+    record logMessage(
+        String action,
+        Parameters parameters
+    ) {
+        record Parameters(
+            String timestamp,
+            String level,
+            String message,
+            String fileName,
+            int fileLine,
+            List<String> tags,
+            String format
+        ) {}
+    }
 
     public static void main(String[] args) {
         while (true) {
