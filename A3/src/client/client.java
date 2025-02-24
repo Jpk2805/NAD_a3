@@ -3,6 +3,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Scanner;
 
@@ -54,6 +55,17 @@ public class client {
     }
 
     private static void manualTesting() {
+        while (true) {
+            String level = getInput("Enter log level (e.g., INFO, ERROR): ");
+            String message = getInput("Enter log message: ");
+            String format = getFormatInput();
+
+            sendlogMessage(createlogMessage(level, message, format));
+
+            if (!confirm("Do you want to send another log message?")) {
+                break;
+            }
+        }
     }
 
     private static void automatedTesting() {
@@ -123,4 +135,40 @@ public class client {
             System.out.println("Error: " + e.getMessage());
         }
     }
+    
+    private static logMessage createlogMessage(String level, String message, String format) {
+            return new logMessage(
+                "Log",
+                new logMessage.Parameters(
+                    LocalDateTime.now().toString(),
+                    level,
+                    message,
+                    "client.java",
+                    5,
+                    List.of("test", "client", "logging"),
+                    format.toLowerCase()
+                )
+            );
+        }
+    
+    private static String getInput(String prompt) {
+            System.out.print(prompt);
+            return scanner.nextLine();
+        }
+    
+    private static String getFormatInput() {
+            while (true) {
+                String format = getInput("Enter log format (text/json): ").trim().toLowerCase();
+                if (format.equals("text") || format.equals("json")) {
+                    return format;
+                }
+                System.out.println("Invalid format. Please enter 'text' or 'json'.");
+            }
+        }
+    
+    private static boolean confirm(String prompt) {
+            System.out.print(prompt + " (yes/no): ");
+            return scanner.nextLine().trim().equalsIgnoreCase("yes");
+    }
+    
 }
